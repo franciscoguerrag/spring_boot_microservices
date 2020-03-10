@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import com.formacionbdi.springboot.app.oauth.services.IUserService;
 import com.formacionbdi.springboot.app.users.commons.models.entity.User;
 
+import brave.Tracer;
 import feign.FeignException;
 
 @Component
@@ -22,6 +23,9 @@ public class AuthenticationSuccessErrorHandler implements AuthenticationEventPub
 	@Autowired
 	private IUserService userService;
 	
+	@Autowired
+	private Tracer tracer;
+
 	
 	@Override
 	public void publishAuthenticationSuccess(Authentication authentication) {
@@ -45,6 +49,9 @@ public class AuthenticationSuccessErrorHandler implements AuthenticationEventPub
 		log.error(msg);
 		
 		try {
+			StringBuilder errors= new  StringBuilder();
+			errors.append(msg);
+			
 			User user = userService.findByUsername(authentication.getName());
 			if(user.getIntentos()==null) {
 				user.setIntentos(0);
@@ -52,14 +59,17 @@ public class AuthenticationSuccessErrorHandler implements AuthenticationEventPub
 			log.info("Intentos actual es de: " +user.getIntentos() );
 			user.setIntentos(user.getIntentos()+1);
 			log.info("Intentos despues es de: " +user.getIntentos() );
-			
+			errors.append(" _ " +"Intentos de login es de: " +user.getIntentos());
 			
 			if(user.getIntentos()>=3) {
-				log.error("El usuario %s des-habilitado por máximos intentos.", user.getUsername());
+				String errorMax ="El usuario %s des-habilitado por máximos intentos." +  user.getUsername();
+				log.error(errorMax);
+				errors.append(" _ " +errorMax);
 				
 				user.setEnabled(false);
 			}
 			userService.update(user, user.getId());
+			tracer.currentSpan().tag("error.mensaje", errors.toString());
 		}
 		catch (FeignException e) {
 			log.error(String.format("El usuario %s no existe en el sistema" , authentication.getName()));
